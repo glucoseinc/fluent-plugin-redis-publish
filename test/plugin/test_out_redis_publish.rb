@@ -107,4 +107,16 @@ class RedisPublishOutputTest < Test::Unit::TestCase
     assert_equal(%Q[{"foo":"bar","time":#{time}}], $messages[0])
     assert_equal(%Q[{"bar":"baz","time":#{time}}], $messages[1])
   end
+
+  def test_include_time
+    d = create_driver(CONFIG1 + %[
+      include_time false
+    ])
+
+    time = Time.parse("2011-01-02 13:14:15 UTC").to_i
+    d.emit({ "foo" => "bar" }, time)
+    d.run
+
+    assert_equal(%Q[{"foo":"bar"}], $messages[0])
+  end
 end

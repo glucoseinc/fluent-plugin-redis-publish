@@ -8,6 +8,7 @@ module Fluent
     config_param :db,     :integer, :default => 0
     config_param :format, :string,  :default => 'json'
     config_param :wait,   :bool,    :default => false
+    config_param :include_time, :bool,  :default => true
 
     attr_reader :redis
 
@@ -50,7 +51,9 @@ module Fluent
 
     private
     def serialize_record(tag, time, record)
-      record["time"] = time
+      if @include_time
+        record["time"] = time
+      end
 
       if @format == "json"
         record.to_json
