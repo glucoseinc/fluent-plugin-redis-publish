@@ -30,6 +30,7 @@ class RedisPublishOutputTest < Test::Unit::TestCase
     Fluent::Test.setup
     $channels = []
     $messages = []
+    $subscriber_count = 1
   end
 
   CONFIG1 = %[
