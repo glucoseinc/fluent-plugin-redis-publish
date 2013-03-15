@@ -2,10 +2,13 @@ require 'helpers'
 
 require 'redis'
 
-$channel = nil
-$message = nil
+$channels = []
+$messages = []
+$subscriber_count = 1
 
 class Redis
+  attr_writer :subscriber_count
+  
   def initialize(options = {})
   end
 
@@ -14,14 +17,19 @@ class Redis
   end
 
   def publish(channel, message)
-    $channel = channel
-    $message = message
+    if $subscriber_count > 0
+      $channels << channel
+      $messages << message
+    end
+    $subscriber_count
   end
 end
 
 class RedisPublishOutputTest < Test::Unit::TestCase
   def setup
     Fluent::Test.setup
+    $channels = []
+    $messages = []
   end
 
   CONFIG1 = %[
@@ -66,7 +74,36 @@ class RedisPublishOutputTest < Test::Unit::TestCase
     d.emit({ "foo" => "bar" }, time)
     d.run
 
-    assert_equal "test", $channel
-    assert_equal(%Q[{"foo":"bar","time":#{time}}], $message)
+    assert_equal 1, $channels.count
+    assert_equal 1, $messages.count
+    assert_equal "test", $channels[0]
+    assert_equal(%Q[{"foo":"bar","time":#{time}}], $messages[0])
+  end
+
+  def test_buffered_write
+    d = create_driver(CONFIG1 + %[
+      wait true
+    ])
+    time = Time.parse("2011-01-02 13:14:15 UTC").to_i
+    
+    $subscriber_count = 0
+    d.emit({ "foo" => "bar" }, time)
+    assert_raise RuntimeError do
+      d.run
+    end
+
+    assert_equal 0, $channels.count
+    assert_equal 0, $messages.count
+
+    $subscriber_count = 1
+    d.emit({ "bar" => "baz" }, time)
+    d.run
+    
+    assert_equal 2, $channels.count
+    assert_equal 2, $messages.count
+    assert_equal "test", $channels[0]
+    assert_equal "test", $channels[1]
+    assert_equal(%Q[{"foo":"bar","time":#{time}}], $messages[0])
+    assert_equal(%Q[{"bar":"baz","time":#{time}}], $messages[1])
   end
 end

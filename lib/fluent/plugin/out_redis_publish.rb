@@ -7,6 +7,7 @@ module Fluent
     config_param :port,   :integer, :default => 6379
     config_param :db,     :integer, :default => 0
     config_param :format, :string,  :default => 'json'
+    config_param :wait,   :bool,    :default => false
 
     attr_reader :redis
 
@@ -40,16 +41,42 @@ module Fluent
     end
 
     def write(chunk)
+      if @wait
+        write_buffered(chunk)
+      else
+        write_pipelined(chunk)
+      end
+    end
+
+    private
+    def serialize_record(tag, time, record)
+      record["time"] = time
+
+      if @format == "json"
+        record.to_json
+      else
+        record.to_msgpack
+      end
+    end
+      
+    def write_pipelined(chunk)
       @redis.pipelined do
         chunk.msgpack_each do |(tag, time, record)|
-          record["time"] = time
-
-          if @format == "json"
-            @redis.publish(tag, record.to_json)
-          elsif @format == "msgpack"
-            @redis.publish(tag, record.to_msgpack)
-          end
+          @redis.publish(tag, serialize_record(tag, time, record))
         end
+      end
+    end
+
+    def write_buffered(chunk)
+      first_record = true
+      chunk.msgpack_each do |(tag, time, record)|
+        subscribers = @redis.publish(tag, serialize_record(tag, time, record))
+        # fluent's delivery policy is 'At most once':
+        # don't raise if we've already published any message.
+        if first_record and subscribers == 0
+          raise 'no subscriber is listening'
+        end
+        first_record = false
       end
     end
   end
